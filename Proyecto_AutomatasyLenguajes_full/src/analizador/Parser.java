@@ -3,14 +3,10 @@ package analizador;
 import modelo.Reporte;
 import java.io.IOException;
 
-/**
- * Handwritten parser that follows the grammar implied by the .cup earlier.
- * It consumes tokens from Lexer and builds a Reporte instance.
- */
 public class Parser {
     private Lexer lexer;
     private Lexer.Token lookahead;
-    private Reporte reporte;
+    public Reporte reporte;
 
     public Parser(Lexer lexer){
         this.lexer = lexer;
@@ -19,7 +15,6 @@ public class Parser {
 
     private void next() throws IOException {
         lookahead = lexer.nextToken();
-        //System.out.println("TK -> " + lookahead);
     }
 
     private boolean accept(Lexer.TokenType t) throws IOException {
@@ -36,11 +31,10 @@ public class Parser {
         next();
         try {
             funcion();
-            // on success, print report
-            System.out.println(\"--- REPORTE DE VALIDACIÓN ---\");
+            System.out.println("--- REPORTE DE VALIDACIÓN ---");
             reporte.mostrar();
         } catch (ParseException ex) {
-            System.err.println(\"Error sintáctico: \" + ex.getMessage());
+            System.err.println("Error sintáctico: " + ex.getMessage());
             reporte.erroresSintacticos++;
             reporte.mostrar();
         }
@@ -55,93 +49,103 @@ public class Parser {
         codigo();
         expect(Lexer.TokenType.CODIGO_C);
         expect(Lexer.TokenType.FUNCION_C);
+        reporte.funciones++;
     }
 
     private void parametros() throws IOException, ParseException {
-        // parameters may be a sequence of IDs or NUM separated by commas, or empty
-        if (lookahead.type == Lexer.TokenType.PARAM_C) return; // empty
-        int count = 0;
+        if (lookahead.type == Lexer.TokenType.PARAM_C) return;
+        int valid = 0;
+        int invalid = 0;
         while (lookahead.type == Lexer.TokenType.ID || lookahead.type == Lexer.TokenType.NUM) {
-            count++;
+            if (lookahead.type == Lexer.TokenType.ID || lookahead.type == Lexer.TokenType.NUM) valid++;
+            else invalid++;
             next();
-            if (lookahead.type == Lexer.TokenType.DELIM) { next(); continue; }
+            if (lookahead.type == Lexer.TokenType.DELIM) next();
             else break;
         }
-        reporte.parametrosValidos = count;
+        reporte.parametrosValidos = valid;
+        reporte.parametrosInvalidos = invalid;
     }
 
     private void codigo() throws IOException, ParseException {
-        // code can be empty or list of sentences until CODIGO_C
-        int assignCount = 0;
-        int ifCount = 0;
-        int doCount = 0;
-        int condCount = 0;
+        int assignValid = 0;
+        int assignInvalid = 0;
+        int ifValid = 0;
+        int ifInvalid = 0;
+        int doValid = 0;
+        int doInvalid = 0;
+        int condValid = 0;
+        int condInvalid = 0;
 
         while (lookahead.type != Lexer.TokenType.CODIGO_C && lookahead.type != Lexer.TokenType.EOF) {
-            if (lookahead.type == Lexer.TokenType.ID) {
-                // assignment: ID ASIG NUM DELIM
-                next();
-                if (lookahead.type == Lexer.TokenType.ASIG) {
+            try {
+                if (lookahead.type == Lexer.TokenType.ID) {
+                    if (asignacion()) assignValid++;
+                    else assignInvalid++;
+                } else if (lookahead.type == Lexer.TokenType.IF_A) {
                     next();
-                    if (lookahead.type == Lexer.TokenType.NUM) {
-                        next();
-                        if (lookahead.type == Lexer.TokenType.DELIM) {
-                            next();
-                            assignCount++;
-                            continue;
-                        } else {
-                            throw new ParseException(\"Falta delimitador en asignación en línea \" + lookahead.line);
-                        }
-                    } else {
-                        throw new ParseException(\"Se esperaba número en asignación en línea \" + lookahead.line);
-                    }
+                    expect(Lexer.TokenType.COND_A);
+                    int c = condicion();
+                    condValid += c;
+                    expect(Lexer.TokenType.COND_C);
+                    expect(Lexer.TokenType.CODIGO_A);
+                    codigo();
+                    expect(Lexer.TokenType.CODIGO_C);
+                    expect(Lexer.TokenType.IF_C);
+                    ifValid++;
+                } else if (lookahead.type == Lexer.TokenType.DO_A) {
+                    next();
+                    expect(Lexer.TokenType.CODIGO_A);
+                    codigo();
+                    expect(Lexer.TokenType.CODIGO_C);
+                    expect(Lexer.TokenType.COND_A);
+                    condValid += condicion();
+                    expect(Lexer.TokenType.COND_C);
+                    expect(Lexer.TokenType.DO_C);
+                    doValid++;
                 } else {
-                    throw new ParseException(\"Se esperaba '=' en asignación en línea \" + lookahead.line);
+                    reporte.erroresSintacticos++;
+                    next();
                 }
-            } else if (lookahead.type == Lexer.TokenType.IF_A) {
-                ifCount++;
-                next(); // consume IF_A
-                expect(Lexer.TokenType.COND_A);
-                condCount += condicion();
-                expect(Lexer.TokenType.COND_C);
-                expect(Lexer.TokenType.CODIGO_A);
-                codigo(); // nested code
-                expect(Lexer.TokenType.CODIGO_C);
-                expect(Lexer.TokenType.IF_C);
-            } else if (lookahead.type == Lexer.TokenType.DO_A) {
-                doCount++;
-                next();
-                expect(Lexer.TokenType.CODIGO_A);
-                codigo();
-                expect(Lexer.TokenType.CODIGO_C);
-                expect(Lexer.TokenType.COND_A);
-                condCount += condicion();
-                expect(Lexer.TokenType.COND_C);
-                expect(Lexer.TokenType.DO_C);
-            } else {
-                // unexpected token: try to recover by consuming one token
-                // increment syntax error and continue
+            } catch (ParseException ex) {
                 reporte.erroresSintacticos++;
-                System.err.println(\"Token inesperado \" + lookahead + \", intentando recuperar...\");
                 next();
             }
         }
 
-        reporte.asignacionesValidas = assignCount;
-        reporte.ifValidos = ifCount;
-        reporte.doValidos = doCount;
-        reporte.condicionesValidas = condCount;
+        reporte.asignacionesValidas += assignValid;
+        reporte.asignacionesInvalidas += assignInvalid;
+        reporte.ifValidos += ifValid;
+        reporte.ifInvalidos += ifInvalid;
+        reporte.doValidos += doValid;
+        reporte.doInvalidos += doInvalid;
+        reporte.condicionesValidas += condValid;
+        reporte.condicionesInvalidas += condInvalid;
     }
 
-    // returns number of simple conditions parsed (supports OP_LOG chaining)
+    private boolean asignacion() throws IOException, ParseException {
+        // formato simplificado: id = id/num (+/- id/num)* ;
+        next(); // id
+        if (!accept(Lexer.TokenType.ASIG)) return false;
+        boolean valid = false;
+        if (lookahead.type == Lexer.TokenType.ID || lookahead.type == Lexer.TokenType.NUM) {
+            valid = true;
+            next();
+            while (lookahead.type == Lexer.TokenType.ID || lookahead.type == Lexer.TokenType.NUM || lookahead.lexeme.equals("+") || lookahead.lexeme.equals("-")) {
+                next();
+            }
+        }
+        if (!accept(Lexer.TokenType.DELIM)) valid = false;
+        return valid;
+    }
+
     private int condicion() throws IOException, ParseException {
         int count = 0;
-        // format: ID OP_REL NUM (OP_LOG condicion)?
-        if (lookahead.type == Lexer.TokenType.ID) {
+        if (lookahead.type == Lexer.TokenType.ID || lookahead.type == Lexer.TokenType.NUM) {
             next();
             if (lookahead.type == Lexer.TokenType.OP_REL) {
                 next();
-                if (lookahead.type == Lexer.TokenType.NUM || lookahead.type==Lexer.TokenType.ID) {
+                if (lookahead.type == Lexer.TokenType.ID || lookahead.type == Lexer.TokenType.NUM) {
                     next();
                     count++;
                     if (lookahead.type == Lexer.TokenType.OP_LOG) {
@@ -149,18 +153,12 @@ public class Parser {
                         count += condicion();
                     }
                     return count;
-                } else {
-                    throw new ParseException(\"Se esperaba NUM/ID en condición en línea \" + lookahead.line);
                 }
-            } else {
-                throw new ParseException(\"Se esperaba operador relacional en condición en línea \" + lookahead.line);
             }
-        } else {
-            throw new ParseException(\"Se esperaba ID al inicio de condición en línea \" + lookahead.line);
         }
+        return count;
     }
 
-    // Simple ParseException
     public static class ParseException extends Exception {
         public ParseException(String msg){ super(msg); }
     }

@@ -9,6 +9,9 @@ y = 20;
 </if>
 <do>
 <codigo>x = x + 1;</codigo>
+UNIVERSIDAD MARIANO GÁLVEZ
+FACULTAD DE INGENIERÍA EN SISTEMAS DE INFORMACIÓN Y CIENCIAS DE LA
+COMPUTACIÓN
 <condicion>x < 100</condicion>
 </do>
 </codigo>

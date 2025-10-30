@@ -7,7 +7,7 @@ import java.io.IOException;
 public class Main {
     public static void main(String[] args) {
         String input = "entrada.txt";
-        boolean writeReportFile = true; // will also generate reporte.txt
+        boolean writeReportFile = true;
         if (args.length > 0) input = args[0];
         if (args.length > 1 && args[1].equalsIgnoreCase("noreport")) writeReportFile = false;
 
